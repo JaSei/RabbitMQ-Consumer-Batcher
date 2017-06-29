@@ -2,5 +2,7 @@ Revision history for Perl extension RabbitMQ-Consumer-Batcher
 
 {{$NEXT}}
 
+0.1.0 2017-06-29T14:09:40Z
+
     - original version
 

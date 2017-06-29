@@ -29,3 +29,5 @@ cover_db/
 MYMETA.*
 
 /RabbitMQ-Consumer-Batcher-*
+.carmel/MySetup.pm
+cpanfile.snapshot
