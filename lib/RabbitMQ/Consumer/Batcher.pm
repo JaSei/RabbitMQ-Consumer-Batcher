@@ -1,8 +1,11 @@
 package RabbitMQ::Consumer::Batcher;
 use Moose;
 
+use namespace::autoclean;
+
 use Try::Tiny;
 use RabbitMQ::Consumer::Batcher::Item;
+use RabbitMQ::Consumer::Batcher::Message;
 
 our $VERSION = '0.1.0';
 
@@ -77,10 +80,9 @@ RabbitMQ::Consumer::Batcher - batch consumer of RMQ messages
             path(...)->spew(join "\t", map { $_->value() } @$batch);
         },
         on_batch_complete_catch => sub {
-            my ($batcher, $exception, $batch) = @_;
+            my ($batcher, $batch, $exception) = @_;
 
-            $log->error("batch failed: $exception");
-            $batcher->reject(@$batch);
+            $log->error("save messages to file failed: $exception");
         }
     );
 
@@ -91,7 +93,13 @@ RabbitMQ::Consumer::Batcher - batch consumer of RMQ messages
 
 =head1 DESCRIPTION
 
+If you need batch of messages from RabbitMQ - this module is for you.
 
+This module work well with L<AnyEvent::RabbitMQ::PubSub::Consumer>
+
+Idea of this module is - in I<on_add> phase is message validate and if is corrupted, can be reject.
+In I<on_batch_complete> phase we manipulated with message which we don't miss.
+If is some problem in this phase, messages are republished..
 
 =head1 METHODS
 
@@ -149,7 +157,7 @@ has 'on_add' => (
     isa     => 'CodeRef',
     default => sub {
         return sub {
-            my ($msg) = @_;
+            my ($batcher, $msg) = @_;
             return $msg->{body}->payload();
           }
     }
@@ -195,7 +203,7 @@ has 'on_add_catch' => (
             my ($batcher, $msg, $exception) = @_;
 
             $batcher->reject($msg);
-          }
+        }
     }
 );
 
@@ -241,12 +249,17 @@ has 'on_batch_complete' => (
 
 this callback are called if C<on_batch_complete> callback throws
 
-default behaviour do I<reject_and_republish> all batch
+after this callback is batch I<reject_and_republish>
+
+If you need change I<reject_and_republish> of batch to (for example) I<reject>, you can do:
 
     return sub {
         my ($batcher, $batch, $exception) = @_;
 
-        $batcher->reject_and_republish($batch);
+        $batcher->reject($batch);
+        #batch_clean must be called,
+        #because reject_and_republish after this exception handler will be called to...
+        $batcher->batch_clean();
     }
 
 parameters which are give to callback:
@@ -271,14 +284,7 @@ exception string
 
 has 'on_batch_complete_catch' => (
     is => 'ro',
-    isa => 'CodeRef',
-    default => sub {
-        return sub {
-            my ($batcher, $batch, $exception) = @_;
-
-            $batcher->reject_and_republish($batch);
-        }
-    }
+    isa => 'Maybe[CodeRef]',
 );
 
 has 'batch' => (
@@ -308,21 +314,25 @@ sub consume_code {
     return sub {
         my ($consumer, $msg) = @_;
 
+        my $message = RabbitMQ::Consumer::Batcher::Message->new(
+            %$msg,
+            consumer => $consumer,
+        );
+
         try {
-            my $value = $self->on_add->($msg);
+
+            my $value = $self->on_add->($self, $message);
 
             $self->add_to_batch(
                 RabbitMQ::Consumer::Batcher::Item->new(
                     value    => $value,
-                    msg      => $msg,
-                    consumer => $consumer,
+                    msg      => $message,
                 )
             );
         }
         catch {
-            $self->on_add_catch->($self, $msg, $_);
+            $self->on_add_catch->($self, $message, $_);
         };
-
 
         if ($self->count_of_batch_items() >= $self->batch_size) {
             try {
@@ -330,7 +340,11 @@ sub consume_code {
                 $self->ack($self->batch_as_array());
             }
             catch {
-                $self->on_batch_complete_catch->($self, $self->batch, $_);
+                my $exception = $_;
+                if (defined $self->on_batch_complete_catch) {
+                    $self->on_batch_complete_catch->($self, $self->batch, $exception);
+                }
+                $self->reject_and_republish($self->batch_as_array());
             }
             finally {
                 $self->clean_batch();
@@ -341,14 +355,55 @@ sub consume_code {
 
 =head2 ack(@items)
 
+ack all C<@items> (instances of L<RabbitMQ::Consumer::Batcher::Item> or L<RabbitMQ::Consumer::Batcher::Message>)
+
 =cut
 
 sub ack {
     my ($self, @items) = @_;
 
+    _consumer('ack', @items);
+}
+
+=head2 reject(@items)
+
+reject all C<@items> (instances of L<RabbitMQ::Consumer::Batcher::Item> or L<RabbitMQ::Consumer::Batcher::Message>)
+
+=cut
+
+sub reject {
+    my ($self, @items) = @_;
+
+    _consumer('reject', @items);
+}
+
+=head2 reject_and_republish(@items)
+
+reject and republish all C<@items> (instances of L<RabbitMQ::Consumer::Batcher::Item> or L<RabbitMQ::Consumer::Batcher::Message>)
+
+=cut
+
+sub reject_and_republish {
+    my ($self, @items) = @_;
+
+    _consumer('reject_and_republish', @items);
+}
+
+sub _consumer {
+    my ($action, @items) = @_;
+
     foreach my $item (@items) {
-        $item->consumer->ack($item->msg);
+        if ($item->isa('RabbitMQ::Consumer::Batcher::Item')) {
+            $item->msg->consumer->$action($item->msg);
+        }
+        elsif ($item->isa('RabbitMQ::Consumer::Batcher::Message')) {
+            $item->consumer->$action($item);
+        }
+        else {
+            die 'Unknown object (without consumer)';
+        }
     }
+
 }
 
 =head1 contributing

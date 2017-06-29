@@ -1,7 +1,7 @@
 package RabbitMQ::Consumer::Batcher::Item;
 use Moose;
 
-use Moose::Util::TypeConstraints;
+use namespace::autoclean;
 
 =head1 NAME
 
@@ -19,11 +19,13 @@ RabbitMQ::Consumer::Batcher::Item - batch item
 
 =head4 msg
 
+instance of L<RabbitMQ::Consumer::Batcher::Message>
+
 =cut
 
 has 'msg' => (
     is       => 'ro',
-    isa      => 'HashRef',
+    isa      => 'RabbitMQ::Consumer::Batcher::Message',
     required => 1,
 );
 
@@ -34,16 +36,6 @@ has 'msg' => (
 has 'value' => (
     is       => 'ro',
     isa      => 'Defined',
-    required => 1,
-);
-
-=head4 consumer
-
-=cut
-
-has 'consumer' => (
-    is       => 'ro',
-    isa      => duck_type('Consumer interface', [qw(ack reject reject_and_republish)]),
     required => 1,
 );
 

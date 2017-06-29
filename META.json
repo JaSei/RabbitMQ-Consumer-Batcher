@@ -44,6 +44,7 @@
          "requires" : {
             "Moose" : "0",
             "Try::Tiny" : "0",
+            "namespace::autoclean" : "0",
             "perl" : "5.010"
          }
       },

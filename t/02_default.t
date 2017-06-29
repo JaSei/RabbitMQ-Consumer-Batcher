@@ -1,33 +1,44 @@
 use strict;
 use warnings;
 
-use Test::More tests => 6;
+use Test::More tests => 15;
 use Mock::Quick;
 
 use_ok('RabbitMQ::Consumer::Batcher');
 
-my $batch_size = 2;
+my $batch_size = 10;
 
 my $batcher = new_ok(
     'RabbitMQ::Consumer::Batcher',
     [
-        batch_size        => $batch_size,
+        batch_size        => $batch_size/2,
+        on_add            => sub {
+            my ($batcher, $msg) = @_;
+
+            if ($msg->body->payload() % 2) {
+                die 'add exception';
+            }
+
+            return $msg->body->payload();
+        },
+        #on_add_catch      => sub {
+        #    my ($batcher, $msg, $exception) = @_;
+
+        #    note($exception);
+        #},
         on_batch_complete => sub {
             my ($batcher, $batch) = @_;
 
-            is(scalar @$batch, $batch_size, 'count of items in batch');
-            is(join('', map {$_->value()} @$batch), '12', 'value of items');
-        },
-        on_add_catch      => sub {
-            my ($batcher, $msg, $exception) = @_;
+            is(scalar @$batch, $batch_size/2, 'count of items in batch');
+            is(join('', map {$_->value()} @$batch), '246810', 'value of items');
 
-            fail($exception);
+            die 'batch exception';
         },
         on_batch_complete_catch => sub {
             my ($batcher, $batch, $exception) = @_;
 
-            fail($exception);
-        },
+            like($exception, qr/batch exception/, 'on_batch_complete_catch');
+        }
     ]
 );
 
@@ -37,17 +48,17 @@ my $consumer_mock = qstrict(
     ack                  => qmeth {
         my (undef, $msg) = @_;
 
-        pass("ack $msg->{deliver}{method_frame}{delivery_tag}")
+        fail("ack $msg->{deliver}{method_frame}{delivery_tag}")
     },
     reject               => qmeth {
         my (undef, $msg) = @_;
 
-        fail("reject $msg->{deliver}{method_frame}{delivery_tag}")
+        pass("reject $msg->{deliver}{method_frame}{delivery_tag}")
     },
     reject_and_republish => qmeth {
         my (undef, $msg) = @_;
 
-        fail("reject_and_republish $msg->{deliver}{method_frame}{delivery_tag}")
+        pass("reject_and_republish $msg->{deliver}{method_frame}{delivery_tag}")
     },
 );
 

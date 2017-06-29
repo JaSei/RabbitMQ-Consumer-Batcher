@@ -1,3 +1,4 @@
+[![Build Status](https://travis-ci.org/avast/RabbitMQ-Consumer-Batcher.svg?branch=master)](https://travis-ci.org/avast/RabbitMQ-Consumer-Batcher)
 # NAME
 
 RabbitMQ::Consumer::Batcher - batch consumer of RMQ messages
@@ -69,10 +70,9 @@ RabbitMQ::Consumer::Batcher - batch consumer of RMQ messages
             path(...)->spew(join "\t", map { $_->value() } @$batch);
         },
         on_batch_complete_catch => sub {
-            my ($batcher, $exception, $batch) = @_;
+            my ($batcher, $batch, $exception) = @_;
 
-            $log->error("batch failed: $exception");
-            $batcher->reject(@$batch);
+            $log->error("save messages to file failed: $exception");
         }
     );
 
@@ -82,6 +82,14 @@ RabbitMQ::Consumer::Batcher - batch consumer of RMQ messages
     });
 
 # DESCRIPTION
+
+If you need batch of messages from RabbitMQ - this module is for you.
+
+This module work well with [AnyEvent::RabbitMQ::PubSub::Consumer](https://metacpan.org/pod/AnyEvent::RabbitMQ::PubSub::Consumer)
+
+Idea of this module is - in _on\_add_ phase is message validate and if is corrupted, can be reject.
+In _on\_batch\_complete_ phase we manipulated with message which we don't miss.
+If is some problem in this phase, messages are republished..
 
 # METHODS
 
@@ -175,12 +183,17 @@ example `on_batch_complete` _CodeRef_ (item _value_ are _string_s)
 
 this callback are called if `on_batch_complete` callback throws
 
-default behaviour do _reject\_and\_republish_ all batch
+after this callback is batch _reject\_and\_republish_
+
+If you need change _reject\_and\_republish_ of batch to (for example) _reject_, you can do:
 
     return sub {
         my ($batcher, $batch, $exception) = @_;
 
-        $batcher->reject_and_republish($batch);
+        $batcher->reject($batch);
+        #batch_clean must be called,
+        #because reject_and_republish after this exception handler will be called to...
+        $batcher->batch_clean();
     }
 
 parameters which are give to callback:
@@ -204,6 +217,16 @@ return `sub{}` for handling messages in `consume` method of [AnyEvent::RabbitMQ:
     $consumer->consume($cv, $batcher->consume_code());
 
 ## ack(@items)
+
+ack all `@items` (instances of [RabbitMQ::Consumer::Batcher::Item](https://metacpan.org/pod/RabbitMQ::Consumer::Batcher::Item) or [RabbitMQ::Consumer::Batcher::Message](https://metacpan.org/pod/RabbitMQ::Consumer::Batcher::Message))
+
+## reject(@items)
+
+reject all `@items` (instances of [RabbitMQ::Consumer::Batcher::Item](https://metacpan.org/pod/RabbitMQ::Consumer::Batcher::Item) or [RabbitMQ::Consumer::Batcher::Message](https://metacpan.org/pod/RabbitMQ::Consumer::Batcher::Message))
+
+## reject\_and\_republish(@items)
+
+reject and republish all `@items` (instances of [RabbitMQ::Consumer::Batcher::Item](https://metacpan.org/pod/RabbitMQ::Consumer::Batcher::Item) or [RabbitMQ::Consumer::Batcher::Message](https://metacpan.org/pod/RabbitMQ::Consumer::Batcher::Message))
 
 # contributing
 
