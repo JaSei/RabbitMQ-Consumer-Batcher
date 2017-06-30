@@ -71,5 +71,14 @@ for my $i (1 .. $batch_size) {
         ),
     );
 
-    $consume_code->($consumer_mock, { header => {}, body => $body_mock, deliver => $deliver_mock });
+    my $header_mock = qstrict(
+        content_type => '',
+        priority => 1,
+        timestamp => time,
+        user_id => 'guest',
+        delivery_mode => 1,
+        headers => {}
+    );
+
+    $consume_code->($consumer_mock, { header => $header_mock, body => $body_mock, deliver => $deliver_mock });
 }

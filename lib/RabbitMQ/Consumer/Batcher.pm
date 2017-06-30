@@ -7,7 +7,7 @@ use Try::Tiny;
 use RabbitMQ::Consumer::Batcher::Item;
 use RabbitMQ::Consumer::Batcher::Message;
 
-our $VERSION = '0.1.0';
+our $VERSION = '0.1.1';
 
 =head1 NAME
 

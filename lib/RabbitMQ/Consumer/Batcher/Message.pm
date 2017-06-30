@@ -31,7 +31,20 @@ RabbitMQ::Consumer::Batcher::Message - rmq message
 
 has 'header' => (
     is       => 'ro',
-    isa      => 'HashRef', #'Net::AMQP::Protocol::Basic::ContentHeader'
+    #bless(
+    #    {
+    #        'content_type'  => 'application/json',
+    #        'priority'      => 1,
+    #        'timestamp'     => 1498807603,
+    #        'user_id'       => 'guest',
+    #        'delivery_mode' => 1,
+    #        'headers'       => {
+    #            'trials' => '8'
+    #        }
+    #    },
+    #    'Net::AMQP::Protocol::Basic::ContentHeader'
+    #);
+    isa      => duck_type('interface like Net::AMQP::Protocol::Basic::ContentHeader', [qw(content_type priority timestamp user_id delivery_mode headers)]),
     required => 1,
 );
 
